@@ -201,7 +201,7 @@ class TrustAssertionFilter(filters.BaseHostFilter):
         #spec = filter_properties.get('request_spec', {})
         image_props = spec_obj.image.properties
 
-
+        trust_verify = 'false'
         if('trust' in image_props):
             trust_verify = 'true'
 
