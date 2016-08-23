@@ -8,7 +8,6 @@
     <packaging>pom</packaging>
     
     <modules>
-        <module>compute-node</module>
         <module>controller</module>
         <module>mtwilson-linux-patch-util</module>
         <module>mtwilson-openstack-maven-root</module>
