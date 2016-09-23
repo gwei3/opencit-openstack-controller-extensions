@@ -23,18 +23,18 @@
 # and it is not saved or used by the app script
 DISTRIBUTION_LOCATION=""
 NOVA_CONFIG_DIR_LOCATION_PATH=""
-OPENSTACK_DASHBOARD_LOCATION=""
-export OPENSTACK_EXT_HOME=${OPENSTACK_EXT_HOME:-/opt/openstack-ext}
-OPENSTACK_EXT_LAYOUT=${OPENSTACK_EXT_LAYOUT:-home}
+NOVA_DB_MIGRATE_REPO_PATH=${NOVA_DB_MIGRATE_REPO_PATH:-nova/db/sqlalchemy/migrate_repo}
+export CONTROLLER_EXT_HOME=${CONTROLLER_EXT_HOME:-/opt/controller-ext}
+CONTROLLER_EXT_LAYOUT=${CONTROLLER_EXT_LAYOUT:-home}
 
-# the env directory is not configurable; it is defined as OPENSTACK_EXT_HOME/env and
+# the env directory is not configurable; it is defined as CONTROLLER_EXT_HOME/env and
 # the administrator may use a symlink if necessary to place it anywhere else
-export OPENSTACK_EXT_ENV=$OPENSTACK_EXT_HOME/env
+export CONTROLLER_EXT_ENV=$CONTROLLER_EXT_HOME/env
 
 # load application environment variables if already defined
-if [ -d $OPENSTACK_EXT_ENV ]; then
-  OPENSTACK_EXT_ENV_FILES=$(ls -1 $OPENSTACK_EXT_ENV/*)
-  for env_file in $OPENSTACK_EXT_ENV_FILES; do
+if [ -d $CONTROLLER_EXT_ENV ]; then
+  CONTROLLER_EXT_ENV_FILES=$(ls -1 $CONTROLLER_EXT_ENV/*)
+  for env_file in $CONTROLLER_EXT_ENV_FILES; do
     . $env_file
     env_file_exports=$(cat $env_file | grep -E '^[A-Z0-9_]+\s*=' | cut -d = -f 1)
     if [ -n "$env_file_exports" ]; then eval export $env_file_exports; fi
@@ -54,6 +54,7 @@ PATCH_UTIL_SCRIPT_FILE=$(ls -1 mtwilson-linux-patch-util-*.sh | head -n 1)
 if [ -n "$PATCH_UTIL_SCRIPT_FILE" ] && [ -f "$PATCH_UTIL_SCRIPT_FILE" ]; then
   . $PATCH_UTIL_SCRIPT_FILE
 fi
+PATCH_DB_SCRIPT_FILE=$(ls -1 *.py)
 UNINSTALL_SCRIPT_FILE=$(ls -1 mtwilson-openstack-controller-uninstall.sh | head -n 1)
 
 # load installer environment file, if present
@@ -66,14 +67,14 @@ else
   echo "No environment file"
 fi
 
-if [ "$OPENSTACK_EXT_LAYOUT" == "linux" ]; then
-  export OPENSTACK_EXT_REPOSITORY=${OPENSTACK_EXT_REPOSITORY:-/var/opt/openstack-ext}
-elif [ "$OPENSTACK_EXT_LAYOUT" == "home" ]; then
-  export OPENSTACK_EXT_REPOSITORY=${OPENSTACK_EXT_REPOSITORY:-$OPENSTACK_EXT_HOME/repository}
+if [ "$CONTROLLER_EXT_LAYOUT" == "linux" ]; then
+  export CONTROLLER_EXT_REPOSITORY=${CONTROLLER_EXT_REPOSITORY:-/var/opt/controller-ext}
+elif [ "$CONTROLLER_EXT_LAYOUT" == "home" ]; then
+  export CONTROLLER_EXT_REPOSITORY=${CONTROLLER_EXT_REPOSITORY:-$CONTROLLER_EXT_HOME/repository}
 fi
-export OPENSTACK_EXT_BIN=$OPENSTACK_EXT_HOME/bin
+export CONTROLLER_EXT_BIN=$CONTROLLER_EXT_HOME/bin
 
-for directory in $OPENSTACK_EXT_REPOSITORY $OPENSTACK_EXT_BIN $OPENSTACK_EXT_ENV; do
+for directory in $CONTROLLER_EXT_REPOSITORY $CONTROLLER_EXT_BIN $CONTROLLER_EXT_ENV; do
   mkdir -p $directory
   chmod 700 $directory
 done
@@ -85,89 +86,12 @@ if [ "$(whoami)" != "root" ]; then
   exit -1
 fi
 
-# validate input variables and prompt
-while [ -z "$MTWILSON_SERVER" ]; do
-  prompt_with_default MTWILSON_SERVER "Mtwilson Server:" "server_address"
+while [ -z "$SIGNATURE_VERIFICATION" ]; do
+  prompt_with_default SIGNATURE_VERIFICATION "Signature Verification:" "on"
 done
-while [ -z "$MTWILSON_SERVER_PORT" ]; do
-  prompt_with_default MTWILSON_SERVER_PORT "Mtwilson Server Port:" "8443"
+while [ -z "$ATTESTATION_HUB_PUBLIC_KEY" ]; do
+  prompt_with_default ATTESTATION_HUB_PUBLIC_KEY "Attestation Hub Public Key:" "/root/attestation_hub_public_key.pem"
 done
-while [ -z "$MTWILSON_TLS_CERT_SHA1" ]; do
-  prompt_with_default_password MTWILSON_TLS_CERT_SHA1 "Mtwilson Server TLS Certificate SHA1:" "$MTWILSON_TLS_CERT_SHA1"
-done
-while [ -z "$MTWILSON_ASSET_TAG_API_USERNAME" ]; do
-  prompt_with_default MTWILSON_ASSET_TAG_API_USERNAME "Mtwilson Asset Tag API Username:" "tagadmin"
-done
-while [ -z "$MTWILSON_ASSET_TAG_API_PASSWORD" ]; do
-  prompt_with_default_password MTWILSON_ASSET_TAG_API_PASSWORD "Mtwilson Asset Tag API Password:" "$MTWILSON_ASSET_TAG_API_PASSWORD"
-done
-mtwilsonAssetTagAuthBlob="$MTWILSON_ASSET_TAG_API_USERNAME:$MTWILSON_ASSET_TAG_API_PASSWORD"
-
-# set mtwilson ca certificate paths
-mtwilsonServerCaFile="/etc/nova/as-ssl.crt"
-mtwilsonServerCaFilePem="${mtwilsonServerCaFile}.pem"
-
-# file operations
-mkdir -p $(dirname ${mtwilsonServerCaFile})
-rm -f ${mtwilsonServerCaFile}
-rm -f ${mtwilsonServerCaFilePem}
-
-# download mtwilson server ssl cert
-openssl s_client -showcerts -connect ${MTWILSON_SERVER}:${MTWILSON_SERVER_PORT} </dev/null 2>/dev/null | openssl x509 -outform DER > ${mtwilsonServerCaFile}
-
-# take the sha1 of the downloaded mtwilson server ssl cert
-measured_server_tls_cert_sha1=$(sha1sum ${mtwilsonServerCaFile} 2>/dev/null | cut -f1 -d " ")
-
-# compare the mtwilson server measure ssl cert sha1 to the value defined in the trustagent config
-if [ "${MTWILSON_TLS_CERT_SHA1}" != "${measured_server_tls_cert_sha1}" ]; then
-  echo "SHA1 of downloaded SSL certificate [${measured_server_tls_cert_sha1}] does not match the expected value [${MTWILSON_TLS_CERT_SHA1}]"
-  rm -f ${mtwilsonServerCaFile}
-  rm -f ${mtwilsonServerCaFilePem}
-  exit -1
-fi
-
-# convert DER to PEM formatted cert
-openssl x509 -inform der -in ${mtwilsonServerCaFile} -out ${mtwilsonServerCaFilePem}
-chown nova:nova ${mtwilsonServerCaFilePem}
-
-# update openstack-dashboard settings.py
-if [ "$OPENSTACK_DASHBOARD_LOCATION" == "" ]; then
- OPENSTACK_DASHBOARD_LOCATION="/usr/share/openstack-dashboard"
-fi
-
-# copy mtwilson ca certificate to path accessible by apache2 server and set ownership and permission
-apache2MtwilsonServerCaFilePem="${OPENSTACK_DASHBOARD_LOCATION}/openstack_dashboard/conf/as-ssl.crt.pem"
-rm -f ${apache2MtwilsonServerCaFilePem}
-cp ${mtwilsonServerCaFilePem} ${apache2MtwilsonServerCaFilePem}
-chmod 644 ${apache2MtwilsonServerCaFilePem}
-
-openstackDashboardSettingsFile="$OPENSTACK_DASHBOARD_LOCATION/openstack_dashboard/settings.py"
-if [ ! -f "$openstackDashboardSettingsFile" ]; then
-  openstackDashboardSettingsFile="/usr/share/openstack-dashboard/openstack_dashboard/settings.py"
-fi
-if [ ! -f "$openstackDashboardSettingsFile" ]; then
-  echo_failure "Could not find $openstackDashboardSettingsFile"
-  echo_failure "OpenStack controller must be installed first"
-  exit -1
-fi
-
-assetTagServiceExistsInSettingsFile=$(grep '^ASSET_TAG_SERVICE = {$' "$openstackDashboardSettingsFile")
-if [ -n "$assetTagServiceExistsInSettingsFile" ]; then
-  sed -i '/^ASSET_TAG_SERVICE = {/,/^}/d' "$openstackDashboardSettingsFile"
-fi
-
-sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' -i "$openstackDashboardSettingsFile" #remove empty lines at EOF
-echo -e "\n" >> "$openstackDashboardSettingsFile"
-echo "ASSET_TAG_SERVICE = {" >> "$openstackDashboardSettingsFile"
-echo "    'IP': '$MTWILSON_SERVER'," >> "$openstackDashboardSettingsFile"
-echo "    'port': '$MTWILSON_SERVER_PORT'," >> "$openstackDashboardSettingsFile"
-echo "    'certificate_url': '/certificate-requests'," >> "$openstackDashboardSettingsFile"
-echo "    'auth_blob': '$mtwilsonAssetTagAuthBlob'," >> "$openstackDashboardSettingsFile"
-echo "    'api_url': '/mtwilson/v2/host-attestations'," >> "$openstackDashboardSettingsFile"
-echo "    'host_url': '/mtwilson/v2/hosts'," >> "$openstackDashboardSettingsFile"
-echo "    'tags_url': '/mtwilson/v2/tag-kv-attributes.json?filter=false'," >> "$openstackDashboardSettingsFile"
-echo "    'attestation_server_ca_file': '$apache2MtwilsonServerCaFilePem'" >> "$openstackDashboardSettingsFile"
-echo "}" >> "$openstackDashboardSettingsFile"
 
 function openstack_update_property_in_file() {
   local property="${1}"
@@ -248,13 +172,11 @@ if [ ! -f "$novaConfFile" ]; then
   echo_failure "OpenStack controller must be installed first"
   exit -1
 fi
-updateNovaConf "attestation_server" "$MTWILSON_SERVER" "trusted_computing" "$novaConfFile"
-updateNovaConf "attestation_port" "$MTWILSON_SERVER_PORT" "trusted_computing" "$novaConfFile"
-updateNovaConf "attestation_auth_blob" "$mtwilsonAssetTagAuthBlob" "trusted_computing" "$novaConfFile"
-updateNovaConf "attestation_api_url" "/mtwilson/v2/host-attestations" "trusted_computing" "$novaConfFile"
-updateNovaConf "attestation_host_url" "/mtwilson/v2/hosts" "trusted_computing" "$novaConfFile"
-updateNovaConf "attestation_server_ca_file" "${mtwilsonServerCaFilePem}" "trusted_computing" "$novaConfFile"
+
+updateNovaConf "signature_verification" "$SIGNATURE_VERIFICATION" "trusted_computing" "$novaConfFile"
+updateNovaConf "attestation_hub_public_key" "$ATTESTATION_HUB_PUBLIC_KEY" "trusted_computing" "$novaConfFile"
 updateNovaConf "scheduler_driver" "nova.scheduler.filter_scheduler.FilterScheduler" "DEFAULT" "$novaConfFile"
+
 schedulerDefaultFiltersExists=$(grep '^scheduler_default_filters=' "$novaConfFile")
 if [ -n "$schedulerDefaultFiltersExists" ]; then
   alreadyIncludesRamFilter=$(echo "$schedulerDefaultFiltersExists" | grep 'RamFilter')
@@ -274,12 +196,22 @@ else
 fi
 
 # make sure unzip and authbind are installed
-MTWILSON_OPENSTACK_YUM_PACKAGES="zip unzip patch patchutils"
-MTWILSON_OPENSTACK_APT_PACKAGES="zip unzip patch patchutils"
-MTWILSON_OPENSTACK_YAST_PACKAGES="zip unzip patch patchutils"
-MTWILSON_OPENSTACK_ZYPPER_PACKAGES="zip unzip patch patchutils"
+MTWILSON_OPENSTACK_YUM_PACKAGES="zip unzip patch patchutils python-pip"
+MTWILSON_OPENSTACK_APT_PACKAGES="zip unzip patch patchutils python-pip"
+MTWILSON_OPENSTACK_YAST_PACKAGES="zip unzip patch patchutils python-pip"
+MTWILSON_OPENSTACK_ZYPPER_PACKAGES="zip unzip patch patchutils python-pip"
 auto_install "Installer requirements" "MTWILSON_OPENSTACK"
 if [ $? -ne 0 ]; then echo_failure "Failed to install prerequisites through package installer"; exit -1; fi
+
+if [ "$DISTRIBUTION_LOCATION" == "" ]; then
+	DISTRIBUTION_LOCATION=$(/usr/bin/python -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())") 
+  if [ $? -ne 0 ]; then echo_failure "Failed to determine distribution location"; echo_failure "Check nova compute configuration"; exit -1; fi
+fi  
+
+# install python pyjwt library
+pip install --target=$DISTRIBUTION_LOCATION pyjwt
+chmod 755 -R $DISTRIBUTION_LOCATION/jwt
+
 
 ### OpenStack Extensions methods
 function getFlavour() {
@@ -331,7 +263,6 @@ function openstackRestart() {
         service nova-conductor restart
         service nova-novncproxy restart
      fi
-        service apache2 restart
   elif [ "$FLAVOUR" == "rhel" -o "$FLAVOUR" == "fedora" -o "$FLAVOUR" == "suse" ] ; then
      if [[ "$NOVA_CONFIG_DIR_LOCATION_PATH" != "" ]]; then
         ps aux | grep python | grep "nova-api" | awk '{print $2}' | xargs kill -9
@@ -354,7 +285,6 @@ function openstackRestart() {
         service openstack-nova-conductor restart
         service openstack-nova-novncproxy restart
      fi
-        service apache2 restart
 
   else
     echo_failure "Cannot determine nova controller restart command based on linux flavor"
@@ -377,10 +307,31 @@ function getOpenstackVersion() {
 
 function getDistributionLocation() {
   if [ "$DISTRIBUTION_LOCATION" == "" ]; then
-	DISTRIBUTION_LOCATION=$(/usr/bin/python -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())") 
-  if [ $? -ne 0 ]; then echo_failure "Failed to determine distribution location"; echo_failure "Check nova compute configuration"; exit -1; fi
-fi  
+    DISTRIBUTION_LOCATION=$(/usr/bin/python -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())") 
+    if [ $? -ne 0 ]; then echo_failure "Failed to determine distribution location"; echo_failure "Check nova compute configuration"; exit -1; fi
+  fi
 echo $DISTRIBUTION_LOCATION
+}
+
+function patchDb() {
+  NOVA_DB_MIGRATE_REPO_PATH="$DISTRIBUTION_LOCATION/$NOVA_DB_MIGRATE_REPO_PATH"
+  echo $NOVA_DB_MIGRATE_REPO_PATH
+  if [ ! -d "$NOVA_DB_MIGRATE_REPO_PATH" ]; then
+    echo_failure "Failed to patch nova database : $NOVA_DB_MIGRATE_REPO_PATH does not exists"
+    exit -1
+  fi
+
+  cd "$NOVA_DB_MIGRATE_REPO_PATH"
+  /usr/bin/python manage.py script "add hv_specs table"
+
+  NOVA_DB_CHANGE_SCRIPT=$(ls versions/ | grep [0-9].* | tail -n 1)
+  NOVA_DB_VERSION=$(echo $NOVA_DB_CHANGE_SCRIPT | head -c 3)
+  NOVA_DB_VERSION=$(($NOVA_DB_VERSION - 1))
+  NOVA_DB_CHANGE_SCRIPT=$NOVA_DB_MIGRATE_REPO_PATH/versions/$NOVA_DB_CHANGE_SCRIPT
+  echo $NOVA_DB_CHANGE_SCRIPT
+
+  cp $CONTROLLER_EXT_BIN/change-script.py $NOVA_DB_CHANGE_SCRIPT
+  chmod 644 $NOVA_DB_CHANGE_SCRIPT
 }
 
 function applyPatches() {
@@ -424,13 +375,6 @@ FLAVOUR=$(getFlavour)
 DISTRIBUTION_LOCATION=$(getDistributionLocation)
 version=$(getOpenstackVersion)
 
-echo "# $(date)" > $OPENSTACK_EXT_ENV/openstack-ext-layout
-echo "export OPENSTACK_EXT_HOME=$OPENSTACK_EXT_HOME" >> $OPENSTACK_EXT_ENV/openstack-ext-layout
-echo "export OPENSTACK_EXT_REPOSITORY=$OPENSTACK_EXT_REPOSITORY" >> $OPENSTACK_EXT_ENV/openstack-ext-layout
-echo "export OPENSTACK_EXT_BIN=$OPENSTACK_EXT_BIN" >> $OPENSTACK_EXT_ENV/openstack-ext-layout
-echo "export NOVA_CONFIG_DIR_LOCATION_PATH=$NOVA_CONFIG_DIR_LOCATION_PATH" >> $OPENSTACK_EXT_ENV/openstack-ext-layout
-echo "export DISTRIBUTION_LOCATION=$DISTRIBUTION_LOCATION" >> $OPENSTACK_EXT_ENV/openstack-ext-layout
-echo "export OPENSTACK_DASHBOARD_LOCATION=$OPENSTACK_DASHBOARD_LOCATION" >> $OPENSTACK_EXT_ENV/openstack-ext-layout
 
 function find_patch() {
   local component=$1
@@ -447,21 +391,33 @@ function find_patch() {
   fi
 
   patch_dir=""
-  if [ -e $OPENSTACK_EXT_REPOSITORY/$component/$version ]; then
-    patch_dir=$OPENSTACK_EXT_REPOSITORY/$component/$version
+  if [ -e $CONTROLLER_EXT_REPOSITORY/$component/$version ]; then
+    patch_dir=$CONTROLLER_EXT_REPOSITORY/$component/$version
 	echo "$patch_dir"
   elif [ ! -z $patch ]; then
     for i in $(seq $patch -1 0); do
-      echo "check for $OPENSTACK_EXT_REPOSITORY/$component/$major.$minor.$i"
-      if [ -e $OPENSTACK_EXT_REPOSITORY/$component/$major.$minor.$i ]; then
-        patch_dir=$OPENSTACK_EXT_REPOSITORY/$component/$major.$minor.$i
+      echo "check for $CONTROLLER_EXT_REPOSITORY/$component/$major.$minor.$i"
+      if [ -e $CONTROLLER_EXT_REPOSITORY/$component/$major.$minor.$i ]; then
+        patch_dir=$CONTROLLER_EXT_REPOSITORY/$component/$major.$minor.$i
 	echo "$patch_dir"
         break
       fi
     done
   fi
-  if [ -z $patch_dir ] && [ -e $OPENSTACK_EXT_REPOSITORY/$component/$major.$minor ]; then
-    patch_dir=$OPENSTACK_EXT_REPOSITORY/$component/$major.$minor
+
+ if [ -z $patch_dir ]; then
+    patch="0"
+    for i in $(seq $minor -1 0); do
+      echo "check for $CONTROLLER_EXT_REPOSITORY/$component/$major.$i.$patch"
+      if [ -e $CONTROLLER_EXT_REPOSITORY/$component/$major.$i.$patch ]; then
+        patch_dir=$CONTROLLER_EXT_REPOSITORY/$component/$major.$i.$patch
+        break
+      fi
+    done
+  fi
+
+  if [ -z $patch_dir ] && [ -e $CONTROLLER_EXT_REPOSITORY/$component/$major.$minor ]; then
+    patch_dir=$CONTROLLER_EXT_REPOSITORY/$component/$major.$minor
 	echo "$patch_dir"
   fi
 
@@ -475,22 +431,12 @@ function find_patch() {
 
 # Uninstall previously installed patches
 for component in $COMPUTE_COMPONENTS; do
-  if [ -d $OPENSTACK_EXT_REPOSITORY/$component ]; then
+  if [ -d $CONTROLLER_EXT_REPOSITORY/$component ]; then
     find_patch $component $version
-    revert_patch "/" "$patch_dir/root.patch" 1
-    if [ $? -ne 0 ]; then
-      echo_failure "Error while reverting root patches."
-      echo_failure "Continuing with installation. If it fails while applying patches uninstall openstack-ext component and then rerun installer."
-    fi
     revert_patch "$DISTRIBUTION_LOCATION/" "$patch_dir/distribution-location.patch" 1
     if [ $? -ne 0 ]; then
       echo_failure "Error while reverting distribution-location patches."
-      echo_failure "Continuing with installation. If it fails while applying patches uninstall openstack-ext component and then rerun installer."
-    fi
-    revert_patch "$OPENSTACK_DASHBOARD_LOCATION/" "$patch_dir/openstack-dashboard.patch" 1
-    if [ $? -ne 0 ]; then
-      echo_failure "Error while reverting openstack-dashboard patches."
-      echo_failure "Continuing with installation. If it fails while applying patches uninstall openstack-ext component and then rerun installer."
+      echo_failure "Continuing with installation. If it fails while applying patches uninstall controller-ext component and then rerun installer."
     fi
   fi
 done
@@ -501,48 +447,90 @@ MTWILSON_OPENSTACK_ZIPFILES=`ls -1 mtwilson-openstack-controller-*.zip 2>/dev/nu
 
 for MTWILSON_OPENSTACK_ZIPFILE in $MTWILSON_OPENSTACK_ZIPFILES; do
   echo "Extract $MTWILSON_OPENSTACK_ZIPFILE"
-  unzip -oq $MTWILSON_OPENSTACK_ZIPFILE -d $OPENSTACK_EXT_REPOSITORY
+  unzip -oq $MTWILSON_OPENSTACK_ZIPFILE -d $CONTROLLER_EXT_REPOSITORY
 done
 
 # copy utilities script file to application folder
-cp $UTIL_SCRIPT_FILE $OPENSTACK_EXT_HOME/bin/functions.sh
-cp $PATCH_UTIL_SCRIPT_FILE $OPENSTACK_EXT_HOME/bin/patch-util.sh
-cp $UNINSTALL_SCRIPT_FILE $OPENSTACK_EXT_HOME/bin/mtwilson-openstack-controller-uninstall.sh
+cp $UTIL_SCRIPT_FILE $CONTROLLER_EXT_HOME/bin/functions.sh
+cp $PATCH_UTIL_SCRIPT_FILE $CONTROLLER_EXT_HOME/bin/patch-util.sh
+cp $PATCH_DB_SCRIPT_FILE $CONTROLLER_EXT_HOME/bin/change-script.py
+cp $UNINSTALL_SCRIPT_FILE $CONTROLLER_EXT_HOME/bin/mtwilson-openstack-controller-uninstall.sh
+
+patchDb
+
+echo "# $(date)" > $CONTROLLER_EXT_ENV/controller-ext-layout
+echo "export CONTROLLER_EXT_HOME=$CONTROLLER_EXT_HOME" >> $CONTROLLER_EXT_ENV/controller-ext-layout
+echo "export CONTROLLER_EXT_REPOSITORY=$CONTROLLER_EXT_REPOSITORY" >> $CONTROLLER_EXT_ENV/controller-ext-layout
+echo "export CONTROLLER_EXT_BIN=$CONTROLLER_EXT_BIN" >> $CONTROLLER_EXT_ENV/controller-ext-layout
+echo "export NOVA_DB_CHANGE_SCRIPT=$NOVA_DB_CHANGE_SCRIPT" >> $CONTROLLER_EXT_ENV/controller-ext-layout
+echo "export NOVA_DB_VERSION=$NOVA_DB_VERSION" >> $CONTROLLER_EXT_ENV/controller-ext-layout
+echo "export NOVA_CONFIG_DIR_LOCATION_PATH=$NOVA_CONFIG_DIR_LOCATION_PATH" >> $CONTROLLER_EXT_ENV/controller-ext-layout
+echo "export DISTRIBUTION_LOCATION=$DISTRIBUTION_LOCATION" >> $CONTROLLER_EXT_ENV/controller-ext-layout
 
 
 # set permissions
-chmod 700 $OPENSTACK_EXT_HOME/bin/*.sh
+chmod 700 $CONTROLLER_EXT_HOME/bin/*.sh
 
-cd $OPENSTACK_EXT_REPOSITORY
+cd $CONTROLLER_EXT_REPOSITORY
 
 
 for component in $COMPUTE_COMPONENTS; do
   find_patch $component $version
-	echo "$patch_dir/root.patch"
-  apply_patch "/" "$patch_dir/root.patch" 1
+  apply_patch "$DISTRIBUTION_LOCATION/" "$patch_dir/distribution-location.patch" 1
   if [ $? -ne 0 ]; then
     echo_failure "Error while applying patches."
     exit -1
   fi
-   apply_patch "$DISTRIBUTION_LOCATION/" "$patch_dir/distribution-location.patch" 1
-if [ $? -ne 0 ]; then
-    echo_failure "Error while applying patches."
-    exit -1
-  fi
- apply_patch "$OPENSTACK_DASHBOARD_LOCATION/" "$patch_dir/openstack-dashboard.patch" 1
-	if [ $? -ne 0 ]; then
-    echo_failure "Error while applying patches."
-    exit -1
-  fi
-
 done
 
-find /usr/share/openstack-dashboard/ -name "*.pyc" -delete
-NOVACLIENT_LOCATION=`find "/" -name "novaclient"`
-if [ `echo $?` == 0 ] ; then
-find $NOVACLIENT_LOCATION -name "*.pyc" -delete
-fi
 find $DISTRIBUTION_LOCATION/nova -name "*.pyc" -delete
+if [ -d /var/log/nova ]	; then
+  chown -R nova:nova /var/log/nova
+fi
+
+# rootwrap.conf
+rootwrapConfFile="/etc/nova/rootwrap.conf"
+if [ ! -f "$rootwrapConfFile" ]; then
+rootwrapConfFile="$NOVA_CONFIG_DIR_LOCATION_PATH/rootwrap.conf"
+fi
+if [ ! -f "$rootwrapConfFile" ]; then
+  echo_failure "Could not find $rootwrapConfFile"
+  exit -1
+fi
+
+# rootwrap api-metadata.filters
+for apimetadataFiltersDir in `grep filters_path $rootwrapConfFile | awk 'BEGIN{FS="="}{print $2}' | sed 's/,/ /g'`
+do
+       if [ -f "$apimetadataFiltersDir"/api-metadata.filters ] ; then
+               export apimetadataFiltersFile="$apimetadataFiltersDir"/api-metadata.filters
+               echo "Using api-metadata.filters at $apimetadataFiltersFile"
+               break
+       fi
+done
+
+if [ ! -f "$apimetadataFiltersFile" ]; then
+  echo_failure "Could not find $apimetadataFiltersFile"
+  exit -1
+fi
+apimetadataFiltersCatExists=$(grep '^cat:' "$apimetadataFiltersFile")
+if [ -n "$apimetadataFiltersCatExists" ]; then
+  sed -i 's/^cat:.*/cat: CommandFilter, \/bin\/cat, root/g' "$apimetadataFiltersFile"
+else
+  echo "cat: CommandFilter, /bin/cat, root" >> "$apimetadataFiltersFile"
+fi
+
+# add nova to sudoers
+etcSudoersFile="/etc/sudoers"
+if [ ! -f "$etcSudoersFile" ]; then
+  echo_failure "Could not find $etcSudoersFile"
+  exit -1
+fi
+etcSudoersNovaExists=$(grep $'^nova\s' "$etcSudoersFile")
+if [ -n "$etcSudoersNovaExists" ]; then
+  sed -i 's/^nova\s.*/nova ALL = (root) NOPASSWD: \/usr\/bin\/nova-rootwrap '$(sed_escape "$rootwrapConfFile")' \*/g' "$etcSudoersFile"
+else
+  echo "nova ALL = (root) NOPASSWD: /usr/bin/nova-rootwrap /etc/nova/rootwrap.conf *" >> "$etcSudoersFile"
+fi
 
 # remove trusted_filter.py if exists
 trustedFilterFile=$(find "$DISTRIBUTION_LOCATION" -name "trusted_filter.py")
@@ -551,14 +539,7 @@ if [ -f "$trustedFilterFile" ]; then
 fi
 
 echo "Syncing nova database"
-if [ -d /var/log/nova ]	; then
-  chown -R nova:nova /var/log/nova
-fi
 su -s /bin/sh -c "nova-manage db sync" nova
-
-if [ -d /var/log/nova ] ; then
-  chown -R nova:nova /var/log/nova
-fi
 
 openstackRestart
 

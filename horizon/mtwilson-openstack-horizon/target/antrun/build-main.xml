@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="maven-antrun-" default="main"  >
+<target name="main">
+  <mkdir dir="/home/gauri/23_9/dcg_security-openstack-controller-extensions/horizon/mtwilson-openstack-horizon/target/application"/>
+  <zip whenempty="create" destfile="/home/gauri/23_9/dcg_security-openstack-controller-extensions/horizon/mtwilson-openstack-horizon/target/mtwilson-openstack-horizon-3.1-SNAPSHOT.zip">
+    <fileset dir="/home/gauri/23_9/dcg_security-openstack-controller-extensions/horizon/mtwilson-openstack-horizon/target/application"/>
+  </zip>
+</target>
+</project>

@@ -18,17 +18,17 @@
 # default settings
 # note the layout setting is used only by this script
 # and it is not saved or used by the app script
-export OPENSTACK_EXT_HOME=${OPENSTACK_EXT_HOME:-/opt/openstack-ext}
-OPENSTACK_EXT_LAYOUT=${OPENSTACK_EXT_LAYOUT:-home}
+export CONTROLLER_EXT_HOME=${CONTROLLER_EXT_HOME:-/opt/controller-ext}
+CONTROLLER_EXT_LAYOUT=${CONTROLLER_EXT_LAYOUT:-home}
 
-# the env directory is not configurable; it is defined as OPENSTACK_EXT_HOME/env and
+# the env directory is not configurable; it is defined as CONTROLLER_EXT_HOME/env and
 # the administrator may use a symlink if necessary to place it anywhere else
-export OPENSTACK_EXT_ENV=$OPENSTACK_EXT_HOME/env
+export CONTROLLER_EXT_ENV=$CONTROLLER_EXT_HOME/env
 
 # load application environment variables if already defined
-if [ -d $OPENSTACK_EXT_ENV ]; then
-  OPENSTACK_EXT_ENV_FILES=$(ls -1 $OPENSTACK_EXT_ENV/*)
-  for env_file in $OPENSTACK_EXT_ENV_FILES; do
+if [ -d $CONTROLLER_EXT_ENV ]; then
+  CONTROLLER_EXT_ENV_FILES=$(ls -1 $CONTROLLER_EXT_ENV/*)
+  for env_file in $CONTROLLER_EXT_ENV_FILES; do
     . $env_file
     env_file_exports=$(cat $env_file | grep -E '^[A-Z0-9_]+\s*=' | cut -d = -f 1)
     if [ -n "$env_file_exports" ]; then eval export $env_file_exports; fi
@@ -36,33 +36,28 @@ if [ -d $OPENSTACK_EXT_ENV ]; then
 fi
 
 # source functions script
-. $OPENSTACK_EXT_HOME/bin/functions.sh
+. $CONTROLLER_EXT_HOME/bin/functions.sh
 
 # source patch-util script
-. $OPENSTACK_EXT_HOME/bin/patch-util.sh
+. $CONTROLLER_EXT_HOME/bin/patch-util.sh
 
-source $OPENSTACK_EXT_ENV/openstack-ext-layout > /dev/null 2>&1
+source $CONTROLLER_EXT_ENV/controller-ext-layout > /dev/null 2>&1
 
 if [ "$DISTRIBUTION_LOCATION" == "" ]; then
         DISTRIBUTION_LOCATION=$(/usr/bin/python -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())")
 fi
 echo $DISTRIBUTION_LOCATION
 
-if [ "$OPENSTACK_DASHBOARD_LOCATION" == "" ]; then
-	$OPENSTACK_DASHBOARD_LOCATION="/usr/share/openstack-dashboard"
-fi
-echo "$OPENSTACK_DASHBOARD_LOCATION" 
-
 # define application directory layout
-if [ "$OPENSTACK_EXT_LAYOUT" == "linux" ]; then
-  export OPENSTACK_EXT_REPOSITORY=${OPENSTACK_EXT_REPOSITORY:-/var/opt/openstack-ext}
-elif [ "$OPENSTACK_EXT_LAYOUT" == "home" ]; then
-  export OPENSTACK_EXT_REPOSITORY=${OPENSTACK_EXT_REPOSITORY:-$OPENSTACK_EXT_HOME/repository}
+if [ "$CONTROLLER_EXT_LAYOUT" == "linux" ]; then
+  export CONTROLLER_EXT_REPOSITORY=${CONTROLLER_EXT_REPOSITORY:-/var/opt/controller-ext}
+elif [ "$CONTROLLER_EXT_LAYOUT" == "home" ]; then
+  export CONTROLLER_EXT_REPOSITORY=${CONTROLLER_EXT_REPOSITORY:-$CONTROLLER_EXT_HOME/repository}
 fi
-export OPENSTACK_EXT_BIN=$OPENSTACK_EXT_HOME/bin
+export CONTROLLER_EXT_BIN=$CONTROLLER_EXT_HOME/bin
 
 # note that the env dir is not configurable; it is defined as "env" under home
-export OPENSTACK_EXT_ENV=$OPENSTACK_EXT_HOME/env
+export CONTROLLER_EXT_ENV=$CONTROLLER_EXT_HOME/env
 
 function getFlavour() {
   flavour=""
@@ -117,7 +112,6 @@ function openstackRestart() {
     	service nova-conductor restart
     	service nova-novncproxy restart
      fi
-        service apache2 restart
   elif [ "$FLAVOUR" == "rhel" -o "$FLAVOUR" == "fedora" -o "$FLAVOUR" == "suse" ] ; then
      if [[ "$NOVA_CONFIG_DIR_LOCATION_PATH" != "" ]]; then
         ps aux | grep python | grep "nova-api" | awk '{print $2}' | xargs kill -9
@@ -140,15 +134,12 @@ function openstackRestart() {
     	service openstack-nova-conductor restart
     	service openstack-nova-novncproxy restart
      fi
-   	service apache2 restart
 
   else
     echo_failure "Cannot determine nova controller restart command based on linux flavor"
     exit -1
   fi
 }
-
-
 
 
 function getOpenstackVersion() {
@@ -183,19 +174,31 @@ function find_patch() {
   fi
 
   patch_dir=""
-  if [ -e $OPENSTACK_EXT_REPOSITORY/$component/$version ]; then
-    patch_dir=$OPENSTACK_EXT_REPOSITORY/$component/$version
+  if [ -e $CONTROLLER_EXT_REPOSITORY/$component/$version ]; then
+    patch_dir=$CONTROLLER_EXT_REPOSITORY/$component/$version
   elif [ ! -z $patch ]; then
     for i in $(seq $patch -1 0); do
-      echo "check for $OPENSTACK_EXT_REPOSITORY/$component/$major.$minor.$i"
-      if [ -e $OPENSTACK_EXT_REPOSITORY/$component/$major.$minor.$i ]; then
-        patch_dir=$OPENSTACK_EXT_REPOSITORY/$component/$major.$minor.$i
+      echo "check for $CONTROLLER_EXT_REPOSITORY/$component/$major.$minor.$i"
+      if [ -e $CONTROLLER_EXT_REPOSITORY/$component/$major.$minor.$i ]; then
+        patch_dir=$CONTROLLER_EXT_REPOSITORY/$component/$major.$minor.$i
         break
       fi
     done
   fi
-  if [ -z $patch_dir ] && [ -e $OPENSTACK_EXT_REPOSITORY/$component/$major.$minor ]; then
-    patch_dir=$OPENSTACK_EXT_REPOSITORY/$component/$major.$minor
+
+ if [ -z $patch_dir ]; then
+    patch="0"
+    for i in $(seq $minor -1 0); do
+      echo "check for $CONTROLLER_EXT_REPOSITORY/$component/$major.$i.$patch"
+      if [ -e $CONTROLLER_EXT_REPOSITORY/$component/$major.$i.$patch ]; then
+        patch_dir=$CONTROLLER_EXT_REPOSITORY/$component/$major.$i.$patch
+        break
+      fi
+    done
+  fi
+
+  if [ -z $patch_dir ] && [ -e $CONTROLLER_EXT_REPOSITORY/$component/$major.$minor ]; then
+    patch_dir=$CONTROLLER_EXT_REPOSITORY/$component/$major.$minor
   fi
 
   if [ -z $patch_dir ]; then
@@ -208,22 +211,12 @@ function find_patch() {
 
 for component in $COMPUTE_COMPONENTS; do
   find_patch $component $version
-  revert_patch "/" "$patch_dir/root.patch" 1
-    if [ $? -ne 0 ]; then
-      echo_failure "Error while reverting root patches."
-      echo_failure "Continuing with installation. If it fails while applying patches uninstall openstack-ext component and then rerun installer."
-    fi
-    revert_patch "$DISTRIBUTION_LOCATION/" "$patch_dir/distribution-location.patch" 1
-    if [ $? -ne 0 ]; then
-      echo_failure "Error while reverting distribution-location patches."
-      echo_failure "Continuing with installation. If it fails while applying patches uninstall openstack-ext component and then rerun installer."
-    fi
-    revert_patch "$OPENSTACK_DASHBOARD_LOCATION/" "$patch_dir/openstack-dashboard.patch" 1
-    if [ $? -ne 0 ]; then
-      echo_failure "Error while reverting openstack-dashboard patches."
-      echo_failure "Continuing with installation. If it fails while applying patches uninstall openstack-ext component and then rerun installer."
-    fi
-  done
+  revert_patch "$DISTRIBUTION_LOCATION/" "$patch_dir/distribution-location.patch" 1
+  if [ $? -ne 0 ]; then
+    echo_failure "Error while reverting distribution-location patches."
+    echo_failure "Continuing with installation. If it fails while applying patches uninstall controller-ext component and then rerun installer."
+  fi
+done
 
 novaConfFile="/etc/nova/nova.conf"
 if [ ! -f "$novaConfFile" ]; then
@@ -232,12 +225,18 @@ fi
 # Remove filter entry from config file
 sed -i '/^scheduler_default_filters=/ s/,TrustAssertionFilter//g' "$novaConfFile"
 
+echo "Syncing nova database"
+echo $NOVA_DB_VERSION
+su -s /bin/sh -c "nova-manage db sync $NOVA_DB_VERSION" nova
+
 openstackRestart
 
-# delete OPENSTACK_EXT_HOME
-if [ -d $OPENSTACK_EXT_HOME ]; then
-  rm -rf $OPENSTACK_EXT_HOME 2>/dev/null
+#delete NOVA_DB change scripts
+rm $NOVA_DB_CHANGE_SCRIPT* 2>/dev/null
+
+# delete CONTROLLER_EXT_HOME
+if [ -d $CONTROLLER_EXT_HOME ]; then
+  rm -rf $CONTROLLER_EXT_HOME 2>/dev/null
 fi
 
 echo_success "OpenStack controller uninstall complete"
-

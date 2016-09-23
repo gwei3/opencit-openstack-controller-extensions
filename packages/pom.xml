@@ -9,6 +9,8 @@
     
     <modules>
         <module>mtwilson-openstack-controller</module>
+        <module>mtwilson-openstack-horizon</module>
+        <module>mtwilson-openstack-controller-horizon</module>
     </modules>
     
 </project>

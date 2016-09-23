@@ -9,6 +9,7 @@
     
     <modules>
         <module>controller</module>
+        <module>horizon</module>
         <module>mtwilson-linux-patch-util</module>
         <module>mtwilson-openstack-maven-root</module>
     </modules>
