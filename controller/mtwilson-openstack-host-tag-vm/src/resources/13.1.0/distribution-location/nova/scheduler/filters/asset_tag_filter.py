@@ -71,19 +71,15 @@ class TrustAssertionFilter(filters.BaseHostFilter):
     def host_passes(self, host_state, spec_obj):
         """Only return hosts with required Trust level."""
 
-        LOG.error(spec_obj.image.properties.get('mtwilson_trustpolicy_location'))
 		verify_asset_tag = False
         verify_trust_status = False
 
         #spec = filter_properties.get('request_spec', {})
         image_props = spec_obj.image.properties
 
-        #trust_verify = image_props.get('trust')
-		trust_verify = 'false'
-        if('trust' in image_props):
-            trust_verify = 'true'
-
+        trust_verify = image_props.get('trust')
         if('mtwilson_trustpolicy_location' in image_props):
+            LOG.info(image_props.get('mtwilson_trustpolicy_location'))
             trust_verify = 'true'
 
         LOG.debug("trust_verify : %s" % trust_verify)

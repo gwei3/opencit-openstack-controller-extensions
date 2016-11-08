@@ -77,26 +77,23 @@ class TrustAssertionFilter(filters.BaseHostFilter):
         spec = filter_properties.get('request_spec', {})
         image_props = spec.get('image', {}).get('properties', {})
 
-        #trust_verify = image_props.get('trust')
-        trust_verify = 'false'
-        if('trust' in image_props):
-            trust_verify = 'true'
-
+        trust_verify = image_props.get('trust')
         if('mtwilson_trustpolicy_location' in image_props):
+            LOG.info(image_props.get('mtwilson_trustpolicy_location'))
             trust_verify = 'true'
 
-        LOG.info("trust_verify : %s" % trust_verify)
+		LOG.debug("trust_verify : %s" % trust_verify)
 
         if trust_verify == 'true':
             verify_trust_status = True
             # Get the Tag verification flag from the image properties
             tag_selections = image_props.get('tags') # comma separated values
-            LOG.info("tag_selections : %s" % tag_selections)
+            LOG.debug("tag_selections : %s" % tag_selections)
             if tag_selections != None and tag_selections != {} and  tag_selections != 'None':
                 verify_asset_tag = True
 
-        LOG.info("verify_trust_status : %s" % verify_trust_status)
-        LOG.info("verify_asset_tag : %s" % verify_asset_tag)
+        LOG.debug("verify_trust_status : %s" % verify_trust_status)
+        LOG.debug("verify_asset_tag : %s" % verify_asset_tag)
 
         if not verify_trust_status:
             # Filter returns success/true if neither trust or tag has to be verified.
@@ -105,18 +102,18 @@ class TrustAssertionFilter(filters.BaseHostFilter):
         #Fetch compute node record for this hypervisor
         compute_node = db.compute_node_search_by_hypervisor(self.admin, host_state.hypervisor_hostname)
         compute_node_id = compute_node[0]['id']
-        LOG.info("compute_node_is : %s" % compute_node_id)
+        LOG.debug("compute_node_is : %s" % compute_node_id)
 
         trust_report = self.utils.getTrustReport(compute_node_id)
-        LOG.info("trust_report : %s" % trust_report)
+        LOG.debug("trust_report : %s" % trust_report)
 
         if trust_report is None:
             #No attestation found for this host
             return False
 
         trust, asset_tag = asset_tag_utils.isHostTrusted(trust_report)
-        LOG.info("trust : %s" % trust)
-        LOG.info("asset_tag : %s" % asset_tag)
+        LOG.debug("trust : %s" % trust)
+        LOG.debug("asset_tag : %s" % asset_tag)
         if not trust:
             return False
 

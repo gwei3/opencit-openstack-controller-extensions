@@ -78,7 +78,11 @@ class TrustAssertionFilter(filters.BaseHostFilter):
         image_props = spec.get('image', {}).get('properties', {})
 
         trust_verify = image_props.get('trust')
-        LOG.debug("trust_verify : %s" % trust_verify)
+		if('mtwilson_trustpolicy_location' in image_props):
+            LOG.info(image_props.get('mtwilson_trustpolicy_location'))
+            trust_verify = 'true'
+
+		LOG.debug("trust_verify : %s" % trust_verify)
 
         if trust_verify == 'true':
             verify_trust_status = True
