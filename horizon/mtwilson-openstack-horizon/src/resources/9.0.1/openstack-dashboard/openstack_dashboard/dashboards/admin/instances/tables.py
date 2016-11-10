@@ -86,17 +86,18 @@ class LiveMigrateInstance(policy.PolicyTargetMixin,
 class AdminUpdateRow(project_tables.UpdateRow):
     def get_data(self, request, instance_id):
         instance = super(AdminUpdateRow, self).get_data(request, instance_id)
-        hostname = getattr(instance, 'OS-EXT-SRV-ATTR:host', None)
-        LOG.debug("################# updaterow hostname : %s" % hostname)
-            if not hostname is None:
-                compute_node = api.nova.hypervisor_search(request, hostname)[0]
-		        LOG.debug("################# updaterow Fetched metadata computenode" )
 
-                metadata = api.nova.hvspecs_metadata(request, compute_node)
-                if hasattr(metadata, 'trust_report'):
-                    instance.attestation_status = metadata.trust_report
-                else:
-                    instance.attestation_status = None
+        hostname = getattr(instance, 'OS-EXT-SRV-ATTR:host', None)
+        LOG.error("hostname : %s" % hostname)
+        if not hostname is None:
+            compute_node = api.nova.hypervisor_search(request, hostname)[0]
+            metadata = api.nova.hvspecs_metadata(request, compute_node)
+	    LOG.error("Fteched metadata")
+            if hasattr(metadata, 'trust_report'):
+	        LOG.error("trust_report : %s" % metadata.trust_report)
+                instance.attestation_status = metadata.trust_report
+            else:
+                instance.attestation_status = None
 
         tenant = api.keystone.tenant_get(request,
                                          instance.tenant_id,

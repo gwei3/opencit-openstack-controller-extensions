@@ -96,51 +96,54 @@ def generate_attestation_status_str_for_instance(policy, policy_status, attestat
     return finalStr
 
 def get_instance_attestation_status(instance):
-    #LOG.error("instance: %s" %instance) 
-    instance_metadata = getattr(instance, 'metadata', None)
-    #image = getattr(instance,'image',None )
-    #LOG.error("image %s" %image)
-    #LOG.error("instance %s" %instance)
-    tag_dictionary = getattr(instance, 'tag_properties', None)
-    trustReport = getattr(instance, 'attestation_status', None)
-    LOG.error("trustReport : %s" %trustReport)
-    LOG.error("tag_dictionary : %s" %tag_dictionary)  
-    policy = None
-    policy_status = None
-    if 'measurement_policy' in instance_metadata:
-        policy = instance_metadata['measurement_policy']
-        policy_status = instance_metadata['measurement_status']
-
     attestation = False
     trustStatus = False
     trustRequired = False
     assetTagPresent = False
     assetTagRequired = False
 
-    assetTags = {}
-    if trustReport is not None:
-        attestation = True
-        trustStatus, assetTags = asset_tag_utils.isHostTrusted(trustReport)
+    policy = None
+    policy_status = None
 
-    LOG.error("trustStatus : %s assetTags : %s" % (trustStatus, assetTags))
-    if tag_dictionary != None and tag_dictionary != '-' and tag_dictionary != 'None':
-        if type(tag_dictionary) is unicode:
-            tag_dictionary = tag_dictionary.encode('utf8')
+    hostname = getattr(instance, 'OS-EXT-SRV-ATTR:host', None)
+    LOG.error("hostname: %s" %hostname)
 
-        if type(tag_dictionary) is str:
-            tag_dictionary = json.loads(tag_dictionary)
+    if hostname is not None:
+        instance_metadata = getattr(instance, 'metadata', None)
+        LOG.error("instance_metadata %s" %instance_metadata)
+        tag_dictionary = getattr(instance, 'tag_properties', None)
+        LOG.error("tag_dictionary : %s" %tag_dictionary)
+        trustReport = getattr(instance, 'attestation_status', None)
+        LOG.error("trustReport : %s" %trustReport)
 
-        if ('mtwilson_trustpolicy_location' in tag_dictionary and tag_dictionary['mtwilson_trustpolicy_location'] != None) or ('trust' in tag_dictionary and tag_dictionary['trust'] == 'true'):
-            trustRequired = True
+        if 'measurement_policy' in instance_metadata:
+            policy = instance_metadata['measurement_policy']
+            policy_status = instance_metadata['measurement_status']
 
-            if 'tags' in tag_dictionary:
-                tags = tag_dictionary['tags']
+        assetTags = {}
+        if trustReport is not None:
+            attestation = True
+            trustStatus, assetTags = asset_tag_utils.isHostTrusted(trustReport)
 
-                if tags != None and tags != {} and tags != 'None':
-                    assetTagRequired = True
+        LOG.error("trustStatus : %s assetTags : %s" % (trustStatus, assetTags))
+        if tag_dictionary != None and tag_dictionary != '-' and tag_dictionary != 'None':
+            if type(tag_dictionary) is unicode:
+                tag_dictionary = tag_dictionary.encode('utf8')
 
-                    assetTagPresent = asset_tag_utils.isAssetTagsPresent(assetTags, tags)
-                    LOG.error("assetTagPresent : %s" % assetTagPresent)
+            if type(tag_dictionary) is str:
+                tag_dictionary = json.loads(tag_dictionary)
+
+            if ('mtwilson_trustpolicy_location' in tag_dictionary and tag_dictionary['mtwilson_trustpolicy_location'] != None) or ('trust' in tag_dictionary and tag_dictionary['trust'] == 'true'):
+                trustRequired = True
+
+                if 'tags' in tag_dictionary:
+                    tags = tag_dictionary['tags']
+
+                    if tags != None and tags != {} and tags != 'None':
+                        assetTagRequired = True
+
+                        assetTagPresent = asset_tag_utils.isAssetTagsPresent(assetTags, tags)
+                        LOG.error("assetTagPresent : %s" % assetTagPresent)
  
     return generate_attestation_status_str_for_instance(policy, policy_status, attestation, trustRequired, trustStatus, assetTagRequired, assetTagPresent)
 
