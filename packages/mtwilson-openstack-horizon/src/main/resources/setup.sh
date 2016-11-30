@@ -440,7 +440,7 @@ for component in $COMPUTE_COMPONENTS; do
   fi
 done
 
-# extract mtwilson-openstack-controller  (mtwilson-openstack-horizon-zip-3.1-SNAPSHOT.zip)
+# extract mtwilson-openstack-controller  (mtwilson-openstack-horizon-zip-3.2-SNAPSHOT.zip)
 echo "Extracting application..."
 MTWILSON_OPENSTACK_ZIPFILES=`ls -1 mtwilson-openstack-horizon-*.zip 2>/dev/null | head -n 1`
 
