@@ -92,9 +92,9 @@ class AdminUpdateRow(project_tables.UpdateRow):
         if not hostname is None:
             compute_node = api.nova.hypervisor_search(request, hostname)[0]
             metadata = api.nova.hvspecs_metadata(request, compute_node)
-	    LOG.error("Fteched metadata")
+            LOG.error("Fteched metadata")
             if hasattr(metadata, 'trust_report'):
-	        LOG.error("trust_report : %s" % metadata.trust_report)
+                LOG.error("trust_report : %s" % metadata.trust_report)
                 instance.attestation_status = metadata.trust_report
             else:
                 instance.attestation_status = None
