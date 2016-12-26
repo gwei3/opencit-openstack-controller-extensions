@@ -208,9 +208,19 @@ if [ "$DISTRIBUTION_LOCATION" == "" ]; then
   if [ $? -ne 0 ]; then echo_failure "Failed to determine distribution location"; echo_failure "Check nova compute configuration"; exit -1; fi
 fi  
 
+
 # install python pyjwt library
+PYJWT_INSTALLED=""
+PYJWT_INSTALLED=$(pip show PyJWT)
+echo "${PYJWT_INSTALLED}"
+if [ -z "$PYJWT_INSTALLED" ]; then
 pip install --target=$DISTRIBUTION_LOCATION pyjwt
 chmod 755 -R $DISTRIBUTION_LOCATION/jwt
+else
+echo "Pyjwt already installed"
+fi
+
+
 
 
 ### OpenStack Extensions methods
