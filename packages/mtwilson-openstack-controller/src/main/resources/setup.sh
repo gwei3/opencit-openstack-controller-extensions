@@ -210,8 +210,8 @@ fi
 
 # install python pyjwt library
 pip install --target=$DISTRIBUTION_LOCATION pyjwt
+if [ $? -ne 0 ]; then echo_failure "Failed to install pyjwt through package installer"; exit -1; fi
 chmod 755 -R $DISTRIBUTION_LOCATION/jwt
-
 
 ### OpenStack Extensions methods
 function getFlavour() {

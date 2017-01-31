@@ -71,7 +71,7 @@ class TrustAssertionFilter(filters.BaseHostFilter):
     def host_passes(self, host_state, spec_obj):
         """Only return hosts with required Trust level."""
 
-		verify_asset_tag = False
+        verify_asset_tag = False
         verify_trust_status = False
 
         #spec = filter_properties.get('request_spec', {})
@@ -85,7 +85,7 @@ class TrustAssertionFilter(filters.BaseHostFilter):
         LOG.debug("trust_verify : %s" % trust_verify)
 
         #if tag_selections is None or tag_selections == 'Trust':
-		if trust_verify == 'true':
+        if trust_verify == 'true':
             verify_trust_status = True
             # Get the Tag verification flag from the image properties
             tag_selections = image_props.get('tags') # comma separated values
