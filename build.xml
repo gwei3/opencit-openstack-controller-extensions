@@ -31,7 +31,13 @@
 			<condition><not><equals arg1="${mavenExitInstallRootPom}" arg2="0"/></not></condition>
 		</fail>
 		<!-- the maven archetypes depend on root pom -->
-		<!-- the root pom -->
+		<exec executable="${cmd.maven}" dir="mtwilson-linux-patch-util" resultproperty="mavenExitInstallPatchUtil">
+			<arg value="-N"/>
+			<arg value="install"/>
+		</exec>
+		<fail message="Cannot install mtwilson-linux-patch-util" status="${mavenExitInstallPatchUtil}">
+			<condition><not><equals arg1="${mavenExitInstallPatchUtil}" arg2="0"/></not></condition>
+		</fail>
 	</target>
 	
 	<target name="clean" depends="init">
