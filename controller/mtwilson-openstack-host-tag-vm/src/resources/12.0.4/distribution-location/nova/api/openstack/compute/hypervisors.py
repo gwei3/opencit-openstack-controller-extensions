@@ -129,16 +129,17 @@ class HypervisorsController(wsgi.Controller):
             existing_keys = [x['key'] for x in existing_hvspecs]
             existing_ids = [x['id'] for x in existing_hvspecs]
 
+            import cgi
             for k,v in param.iteritems():
 
                 try:
                     if not k in existing_keys:
                         hvspec = self.api.create_hv_spec(
-                            context, compute_node_id, k, v)
+                            context, compute_node_id, k, cgi.escape(v))
                     else:
                         idx = existing_keys.index(k)
                         hvspec = self.api.update_hv_spec(
-                            context, existing_ids[idx], compute_node_id, k, v)
+                            context, existing_ids[idx], compute_node_id, k, cgi.escape(v))
 
                 except exception.HVMetadataExists as exc:
                     raise webob.exc.HTTPConflict(explanation=exc.format_message())
